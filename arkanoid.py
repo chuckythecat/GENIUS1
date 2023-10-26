@@ -12,9 +12,10 @@ from PIL import ImageFont
 
 import threading
 
-from luma.core.interface.serial import spi, noop
+from luma.core.interface.serial import i2c, spi, noop
 from luma.core.render import canvas
 from luma.led_matrix.device import max7219
+from luma.oled.device import ssd1306
 
 clk = 18
 dt = 17
@@ -31,29 +32,35 @@ DC = 23
 SPI_PORT = 0
 SPI_DEVICE = 0
 
-serial = spi(port=0, device=0, gpio=noop())
-device = max7219(serial)
+spi_matrix = spi(port=0, device=0, gpio=noop())
+matrix = max7219(spi_matrix)
+
+i2c_oled = i2c(port=1, address=0x3C)
+oled = ssd1306(i2c_oled)
 
 # 128x64 display with hardware I2C:
-disp = Adafruit_SSD1306.SSD1306_128_64(rst=RST)
+# disp = Adafruit_SSD1306.SSD1306_128_64(rst=RST)
 # y 0-15 yellow
 
 # Initialize library.
-disp.begin()
+# disp.begin()
 
 # Clear display.
-disp.clear()
-disp.display()
+# disp.clear()
+# disp.display()
 
-width = disp.width
-height = disp.height
-image = Image.new('1', (width, height))
+# width = disp.width
+# height = disp.height
+# image = Image.new('1', (width, height))
+
+width = 128
+height = 64
 
 # Get drawing object to draw on image.
-draw = ImageDraw.Draw(image)
+# draw = ImageDraw.Draw(image)
 
 # Draw a black filled box to clear the image.
-draw.rectangle((0,0,width,height), outline=0, fill=0)
+# draw.rectangle((0,0,width,height), outline=0, fill=0)
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(clk, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
@@ -62,6 +69,8 @@ GPIO.setup(dt, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 GPIO.setup(row1, GPIO.OUT)
 GPIO.setup(column1, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.setup(buzzer, GPIO.OUT)
+
+b = GPIO.PWM(buzzer, 100)
 
 #########################TESTS#############################
 ################top right collision (x2, y1)###############
@@ -112,6 +121,11 @@ bricks = [
     {"x1": 85, "y1": 0, "x2": 100, "y2": 3},
     {"x1": 102, "y1": 0, "x2": 117, "y2": 3}
 ]
+
+# bricks = [
+#     {"x1": 0, "y1": 8, "x2": 17, "y2": 15},
+# ]
+
 paddleWidth = 20
 paddleHeight = 3
 sensitivity = 3
@@ -140,13 +154,14 @@ def balllogic():
     global ballmoving
     global lives
     global buzz
+    collision = ""
     if ballmoving == 1:
         ballx += balldirectionX
         bally += balldirectionY
     
     if buzz:
         buzz = 0
-        GPIO.output(buzzer, GPIO.LOW)
+        b.stop()
 
     # walls collision
     # right
@@ -175,7 +190,7 @@ def balllogic():
         balldirectionX = random.choice([1, -1]) # 1 - right, -1 - left
         balldirectionY = -1 # 1 - down, -1 - up
         lives -= 1
-        with canvas(device) as draw:
+        with canvas(matrix) as draw:
             draw.text((1, -2), str(lives), fill="white")
 
     # bricks collision
@@ -183,43 +198,54 @@ def balllogic():
         # left wall
         if ballx == brick["x1"]-1 and bally >= brick["y1"]-1 and bally <= brick["y2"]+1 and balldirectionX == 1:
             balldirectionX = -1
-            bricks.remove(brick)
-            buzz = 1
-            print("left")
+            collision += "left "
         # right wall
         elif ballx == brick["x2"]+1 and bally >= brick["y1"]-1 and bally <= brick["y2"]+1 and balldirectionX == -1:
             balldirectionX = 1
-            bricks.remove(brick)
-            buzz = 1
-            print("right")
+            collision += "right "
         # top wall
         if bally == brick["y1"]-1 and ballx >= brick["x1"]-1 and ballx <= brick["x2"]+1 and balldirectionY == 1:
             balldirectionY = -1
-            bricks.remove(brick)
-            buzz = 1
-            print("top")
+            collision += "top "
         # bottom wall
         elif bally == brick["y2"]+1 and ballx >= brick["x1"]-1 and ballx <= brick["x2"]+1 and balldirectionY == -1:
             balldirectionY = 1
+            collision += "bottom "
+        if collision != "":
             bricks.remove(brick)
             buzz = 1
-            print("bottom")
+            # print(f"\n{collision} x1:{brick['x1']} x2:{brick['x2']} y1:{brick['y1']} y2:{brick['y2']}\n")
+            collision = ""
     
-    if buzz: GPIO.output(buzzer, GPIO.HIGH)
+    if buzz: b.start(1)
     # print(f"ballx:{ballx} bally:{bally}")
 
 
 def redraw():
+    # while True:
+    #     draw.rectangle((0, 0, width, height), outline = 0, fill = 0)
+    #     draw.rectangle((paddlePos, height-paddleHeight, paddlePos+paddleWidth, height), outline=255, fill=solidPaddle)
+    #     draw.rectangle((ballx, bally, ballx, bally), outline=255, fill=1)
+
+    #     for brick in bricks:
+    #         draw.rectangle((brick["x1"], brick["y1"], brick["x2"], brick["y2"]), outline=255, fill=1)
+
+    #     disp.image(image)
+    #     disp.display()
+
+    global lives
     while True:
-        draw.rectangle((0, 0, width, height), outline = 0, fill = 0)
-        draw.rectangle((paddlePos, height-paddleHeight, paddlePos+paddleWidth, height), outline=255, fill=solidPaddle)
-        draw.rectangle((ballx, bally, ballx, bally), outline=255, fill=1)
+        with canvas(oled) as draw:
+            if lives == 0:
+                print("GAME OVER\n")
+                draw.text((35, 28), "GAME OVER", fill="white")
+                break
+            draw.rectangle((paddlePos, height-paddleHeight, paddlePos+paddleWidth, height), outline=255, fill=solidPaddle)
+            draw.rectangle((ballx, bally, ballx, bally), outline=255, fill=1)
 
-        for brick in bricks:
-            draw.rectangle((brick["x1"], brick["y1"], brick["x2"], brick["y2"]), outline=255, fill=1)
+            for brick in bricks:
+                draw.rectangle((brick["x1"], brick["y1"], brick["x2"], brick["y2"]), outline=255, fill=1)
 
-        disp.image(image)
-        disp.display()
 
 thread = threading.Thread(target = redraw)
 thread.start()
@@ -229,14 +255,14 @@ balllogic()
 print("Управление ракеткой энкодером, левая верхняя кнопка (KEY1) - запустить шарик")
 
 GPIO.output(row1, GPIO.LOW)
-device.contrast(1)
-with canvas(device) as draw:
+matrix.contrast(1)
+with canvas(matrix) as draw:
     draw.text((1, -2), str(lives), fill="white")
 while True:
     clkState = GPIO.input(clk)
     dtState = GPIO.input(dt)
     col1state = GPIO.input(column1)
-    print(f"debug: clk:{clkState} dt:{dtState} sw:{col1state} paddle:{paddlePos} ballmoving:{ballmoving} ballx:{ballx} bally:{bally}", end="              \r")
+    # print(f"debug: clk:{clkState} dt:{dtState} sw:{col1state} paddle:{paddlePos} ballmoving:{ballmoving} ballx:{ballx} bally:{bally}", end="              \r")
 
     if col1state == 0 and ballmoving == 0: ballmoving = 1
 
