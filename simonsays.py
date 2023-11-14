@@ -2,7 +2,6 @@ from RPi import GPIO
 
 import time
 import random
-from pprint import pprint
 
 from PIL import Image
 from PIL import ImageDraw
@@ -37,8 +36,6 @@ for rownumber, row in enumerate(rows):
     for columnnumber, column in enumerate(columns):
         buttons.append({"buttonnumber": columnnumber+1+((rownumber)*4), "ledrow": columnnumber * 2, "ledcol": rownumber * 2})
 
-# pprint(buttons)
-
 spi_matrix = spi(port=0, device=0, gpio=noop())
 matrix = max7219(spi_matrix)
 
@@ -59,9 +56,6 @@ pressbuttons = 0
 pressed = -1
 
 buzz = False
-
-# sequence.append({'buttonnumber': 13, 'ledcol': 6, 'ledrow': 0})
-# sequence.append({'buttonnumber': 13, 'ledcol': 6, 'ledrow': 0})
 
 while True:
     if pressbuttons == 0:
