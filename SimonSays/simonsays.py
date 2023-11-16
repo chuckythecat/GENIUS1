@@ -133,12 +133,15 @@ class SimonSaysGame:
                 
                 # если кнопка нажата:
                 if self.pressed != -1:
-                    # если нажатая кнопка соответствует текущей цифре в последовательности:
-                    if self.pressed == self.sequence[self.sequencecurrent]["buttonnumber"]:
+                    # кнопка, соответствующая текущей цифре в последовательности
+                    but = self.sequence[self.sequencecurrent]["buttonnumber"]
+                    # если нажатая кнопка соответствует
+                    # текущей цифре в последовательности:
+                    if self.pressed == but:
                         self.pressed = -1
                         # показываем цифру на матрице и пищим
                         self.buzzer.start(1)
-                        freq = 100 + self.sequence[self.sequencecurrent]["buttonnumber"] * 100
+                        freq = 100 + but * 100
                         self.buzzer.ChangeFrequency(freq)
                         with canvas(self.matrix) as draw:
                             draw.rectangle(
@@ -162,7 +165,8 @@ class SimonSaysGame:
                             self.pressed = -1
                             # следующая итерация цикла
                             continue
-                    # если нажатая кнопка НЕ соответствует текущей цифре в последовательности:
+                    # если нажатая кнопка НЕ соответствует
+                    # текущей цифре в последовательности:
                     else:
                         # рисуем крестик на матрице
                         with canvas(self.matrix) as draw:
@@ -193,11 +197,18 @@ class SimonSaysGame:
 
     def exit(self):
         GPIO.cleanup()
+        self.matrix.clear()
 
+# если файл запущен напрямую (не импортирован в качестве модуля)
 if __name__ == '__main__':
+    # создать объект игры
     game = SimonSaysGame(buzzerpin, rows, columns)
     try:
+        # запускаем игру
         game.play()
+    # если нажата комбинация клавиш Ctrl+C:
     except KeyboardInterrupt:
+        # закрываем игру
         game.exit()
+        # завершаем выполнение файла
         exit(0)
