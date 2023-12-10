@@ -74,7 +74,7 @@ while True:
     if btn == 0:
         GPIO.cleanup()
         oled.clear()
-        game = games[counter]["init"](buzzerpin, rows, columns)
+        game = games[counter]["init"](buzzerpin, clk, dt, rows, columns)
         try:
             game.play()
         except KeyboardInterrupt:
