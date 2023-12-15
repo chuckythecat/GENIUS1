@@ -1,8 +1,10 @@
 from RPi import GPIO
 
-# games
-from safecracker1 import SafeCrackerGame
-from simonsays1 import SimonSaysGame
+# импортируем файлы игр
+from SafeCracker.safecracker import SafeCrackerGame
+from SimonSays.simonsays import SimonSaysGame
+from arkanoid import ArkanoidGame
+from tetris import TetrisGame
 
 from luma.core.interface.serial import i2c
 from luma.core.render import canvas
@@ -55,6 +57,14 @@ games = [
     {
         "name": "Комбинация",
         "init": SimonSaysGame
+    },
+    {
+        "name": "Арканоид",
+        "init": ArkanoidGame
+    },
+    {
+        "name": "Тетрис",
+        "init": TetrisGame
     }
 ]
 
@@ -88,11 +98,20 @@ while True:
     if lastCounter != counter:
         # перерисовать OLED экранчик:
         with canvas(oled) as draw:
+            # отобразить квадрат вокруг текущей выбранной игры
+            draw.rectangle((0, counter * 15, 120, (counter+1) * 15),
+                           fill = "black",
+                           outline = "white")
             # написать названия всех игр по порядку
             for index, game in enumerate(games):
-                draw.text((0, index * 15), game["name"], fill="white", font=font)
-            # отобразить квадрат вокруг текущей выбранной игры
-            draw.rectangle((0, counter * 15, 120, (counter+1) * 15), fill = "black", outline = "white")
+                draw.text((0, index * 15),
+                          game["name"],
+                          fill="white",
+                          font=font)
+
+            # квадрат вокруг выбранной игры рисуется перед названиями
+            # самих игр, потому что если бы он рисовался после, он бы стирал
+            # собой название выбранной игры
 
     # переменная последней выбранной игры
     lastCounter = counter
