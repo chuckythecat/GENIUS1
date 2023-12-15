@@ -24,7 +24,9 @@ class SimonSaysGame:
         # переменную для проверки удержания кнопки
         self.waitForRelease = -1
 
-        self.buzzerPin = buzzerPin
+        # объявляем переменные контактов матрицы кнопок заново, чтобы они
+        # принадлежали классу, а не функции, и к ним можно было
+        # получить доступ из метода play
         self.rowPins = rowPins
         self.columnPins = columnPins
 
@@ -33,9 +35,9 @@ class SimonSaysGame:
         self.buttons = []
 
         for rownumber, row in enumerate(self.rowPins):
-            for columnnumber, column in enumerate(self.columnPins):
-                buttonnumber = columnnumber+1+((rownumber)*4)
-                ledrow = columnnumber * 2
+            for colNumber, column in enumerate(self.columnPins):
+                buttonnumber = colNumber+1+((rownumber)*4)
+                ledrow = colNumber * 2
                 ledcol = rownumber * 2
                 self.buttons.append(
                     {"buttonnumber": buttonnumber,
@@ -55,10 +57,10 @@ class SimonSaysGame:
             GPIO.setup(column, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
         # ставим режим контакта пищалки на вывод
-        GPIO.setup(buzzerpin, GPIO.OUT)
+        GPIO.setup(buzzerPin, GPIO.OUT)
 
         # задаем ШИМ для пищалки
-        self.buzzer = GPIO.PWM(buzzerpin, 100)
+        self.buzzer = GPIO.PWM(buzzerPin, 100)
 
         # настраиваем матрицу светодиодов
         spi_matrix = spi(port=0, device=0, gpio=noop())
@@ -99,22 +101,27 @@ class SimonSaysGame:
             else:
                 # проверяем нажатие кнопок
                 # для каждой строки кнопок:
-                for rownumber, row in enumerate(rows):
+                for rownumber, row in enumerate(self.rowPins):
                     # устанавливаем логический ноль на строке
                     GPIO.output(row, GPIO.LOW)
                     # для каждого столбца:
-                    for columnnumber, column in enumerate(columns):
+                    for colNumber, column in enumerate(self.columnPins):
                         # считаем порядковый номер кнопки по формуле
-                        buttonnumber = columnnumber + 1 + (rownumber * 4)
+                        buttonnumber = colNumber + 1 + (rownumber * 4)
                         # если нажали кнопку и никакая больше кнопка не нажата:
-                        if GPIO.input(column) == 0 and self.waitForRelease == -1:
+                        if GPIO.input(column) == 0 \
+                        and self.waitForRelease == -1:
                             # записываем порядковый номер кнопки в переменную
                             self.pressed = buttonnumber
-                            # записываем номер кнопки в переменную, чтобы проверять, что эта кнопка уже нажата
+                            # записываем номер кнопки в переменную,
+                            # чтобы проверять, что эта кнопка уже нажата
                             self.waitForRelease = self.pressed
-                        # если мы ждем, пока кнопку отпустят, и эту кнопку отпустили:
-                        elif GPIO.input(column) == 1 and self.waitForRelease == buttonnumber:
-                            # очищаем переменную, чтобы можно было нажать следующую кнопку
+                        # если мы ждем, пока кнопку отпустят,
+                        # и эту кнопку отпустили:
+                        elif GPIO.input(column) == 1 \
+                        and self.waitForRelease == buttonnumber:
+                            # очищаем переменную, чтобы можно
+                            # было нажать следующую кнопку
                             self.waitForRelease = -1
                     # устанавливаем логическую единицу на строке, чтобы при
                     # нажатии кнопок на этой строке на столбце не появлялся
@@ -123,8 +130,10 @@ class SimonSaysGame:
                 
                 # если кнопка нажата:
                 if self.pressed != -1:
-                    # кнопка, соответствующая текущей цифре в последовательности
-                    buttonNumber = self.sequence[self.sequencecurrent]["buttonnumber"]
+                    sequenceCurrent = self.sequence[self.sequencecurrent]
+                    # кнопка, соответствующая текущей
+                    # цифре в последовательности
+                    buttonNumber = sequenceCurrent["buttonnumber"]
                     pressedNumber = self.pressed
                     # сбрасываем нажатие кнопки
                     self.pressed = -1
@@ -137,10 +146,10 @@ class SimonSaysGame:
                         self.buzzer.ChangeFrequency(freq)
                         with canvas(self.matrix) as draw:
                             draw.rectangle(
-                                (self.sequence[self.sequencecurrent]["ledrow"],
-                                self.sequence[self.sequencecurrent]["ledcol"],
-                                self.sequence[self.sequencecurrent]["ledrow"]+1,
-                                self.sequence[self.sequencecurrent]["ledcol"]+1),
+                                (sequenceCurrent["ledrow"],
+                                sequenceCurrent["ledcol"],
+                                sequenceCurrent["ledrow"] + 1,
+                                sequenceCurrent["ledcol"] + 1),
                                 outline=255, fill=1)
                         time.sleep(0.5)
                         self.buzzer.stop()
@@ -222,7 +231,11 @@ if __name__ == '__main__':
     #   GND 39 40 GPIO21
 
     # создать объект игры
-    game = SimonSaysGame(buzzerpin, clk, dt, rows, columns)
+    game = SimonSaysGame(buzzerpin,
+                         clk,
+                         dt,
+                         rows,
+                         columns)
     try:
         # запускаем игру
         game.play()
