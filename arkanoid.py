@@ -21,7 +21,7 @@ class ArkanoidGame:
 
         # объявляем переменные контактов энкодера заново, чтобы они
         # принадлежали классу, а не функции, и к ним можно было
-        # получить доступ из метода start
+        # получить доступ из метода play
         self.clkPin = clkPin
         self.dtPin = dtPin
 
@@ -41,7 +41,8 @@ class ArkanoidGame:
         # первого контакта строки матрицы кнопок на вывод
         self.row1 = rowPins[0]
         GPIO.setup(self.row1, GPIO.OUT)
-        # режим первого контакта столбца матрицы кнопок на вход с подтяжкой вверх
+        # режим первого контакта столбца
+        # матрицы кнопок на вход с подтяжкой вверх
         self.column1 = columnPins[0]
         GPIO.setup(self.column1, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         # ставим режим контакта пищалки на вывод
@@ -57,6 +58,9 @@ class ArkanoidGame:
         # настраиваем OLED экранчик
         i2c_oled = i2c(port=1, address=0x3C)
         self.oled = ssd1306(i2c_oled)
+
+        # загружаем красивый шрифт, чтобы выводить текст с его помощью
+        self.font = ImageFont.truetype("./FRM325x8.ttf", 15)
 
         # устанавливаем константы ширины и высоты экрана, понадобятся позже
         # для некоторых рассчетов
@@ -99,10 +103,12 @@ class ArkanoidGame:
         self.bally = self.height - 2 - self.paddleHeight
         # переменная текущего направления движения мячика по оси X
         # 1 - Вправо, -1 - Влево
+        # (так как счет координат по оси X экранчика идет слева направо)
         # по умолчанию устанавливается случайно
         self.balldirectionX = random.choice([1, -1])
         # переменная текущего направления движения мячика по оси Y
         # 1 - вниз, -1 - вверх
+        # (так как счет координат по оси Y экранчика идет сверху вниз)
         # по умолчанию устанавливается вверх
         self.balldirectionY = -1
         # флаг пищалки (True - пищим, False - не пищим)
@@ -110,141 +116,219 @@ class ArkanoidGame:
         # флаг для корректного завершения метода перерисовки экрана redraw
         # устанавливается на True при завершении игры
         self.kill = False
-        # начинаем игру
-        self.start()
+        # флаг выйгрыша игры
+        self.win = False
+        # минимальное время, за которое будет
+        # выполняться один цикл логики игры
+        # если логика игры выполняется быстрее,
+        # чем за это время то цикл будет просто
+        # ничего не делать и ждать оставшееся время
+        self.every = 0.05
 
-    # основной метод, обрабатывающая логику игры
+    # основной метод, обрабатывающий логику игры
     # (движение мячика, столкновение мячика с ракеткой/стенами игрового поля,
     # с кирпичиками, падение мячика вниз за пределы игрового поля,
     # если игрок не успел поймать мячик ракеткой, уничтожение кирпичиков)
-    # вызывается каждые 50мс при помощи таймера nextLogicCall
-    def balllogic(self):
-        self.nextLogicCall = threading.Timer(0.05, self.balllogic)
-        self.nextLogicCall.start()
-        # global ballx
-        # global bally
-        # global balldirectionX
-        # global balldirectionY
-        # global ballmoving
-        # global lives
-        # global buzz
-        collision = ""
-        # если мяч двигается:
-        if self.ballmoving:
-            # прибавляем к координатам мячика по каждой из осей
-            # текущее направление движения мячика
-            self.ballx += self.balldirectionX
-            self.bally += self.balldirectionY
-        
-        # TODO: переписать на создание асинхронных потоков(?)
-        # если на прошлом вызове метода пищалка пищала, отключаем ее
-        if self.buzz:
-            self.buzz = False
-            self.buzzer.stop()
+    # вызывается каждые 50мс при помощи бесконечного цикла
+    def ballLogic(self):
+        # создаем переменную, чтобы было с чем
+        # сравнивать в первой итерации цикла
+        self.currentTime = time.time() - 2 * self.every
+        # бесконечный цикл
+        while True:
+            # если установлен флаг закрытия игры, выходим из цикла
+            if self.kill: break
+            # считаем время выполнения одной итерации бесконечного цикла:
+            # отнимаем от текущего времени время начала выполнения прошлой
+            # итерации цикла
+            timePerLogic = time.time() - self.currentTime
+            # если цикл выполнился быстрее, чем за время, указанное в
+            # переменной self.every, остальное время ничего не делаем
+            # и просто ждем, чтобы логика не выполнялась слишком быстро
+            if timePerLogic < self.every:
+                time.sleep(self.every - timePerLogic)
+            # записываем время начала выполнения текущей итерации
+            # бесконечного цикла, чтобы на следующей итерации цикла узнать
+            # сколько времени заняло выполнение кода
+            self.currentTime = time.time()
 
-        # проверка столкновения со стенами игрового поля:
-        # правая
-        if self.ballx >= 127:
-            self.balldirectionX = -1
-            self.buzz = 1
-        # левая
-        if self.ballx <= 0:
-            self.balldirectionX = 1
-            self.buzz = 1
-        # верхняя
-        if self.bally <= 0:
-            self.balldirectionY = 1
-            self.buzz = 1
+            # если мяч двигается:
+            if self.ballmoving:
+                # прибавляем к координатам мячика по каждой из осей
+                # текущее направление движения мячика
+                self.ballx += self.balldirectionX
+                self.bally += self.balldirectionY
+            
+            # TODO: переписать на создание асинхронных потоков(?)
+            # если на прошлом вызове метода пищалка пищала, отключаем ее
+            if self.buzz:
+                self.buzz = False
+                self.buzzer.stop()
 
-        # проверка столкновения мячика с ракеткой:
-        # если мячик ниже верхней грани ракетки:
-        if self.bally >= self.height-self.paddleHeight-1:
-            # если мячик не левее и не правее ракетки:
-            if self.ballx >= self.paddlePos and self.ballx <= self.paddlePos+self.paddleWidth:
-                self.balldirectionY = -1
-                self.buzz = 1
-
-        # проверка выхода мячика за игровое поле,
-        # если не успели поймать его ракеткой:
-        if self.bally >= 63:
-            # отключить движение мячика по полю
-            self.ballmoving = False
-            # расположить мячик прямо над ракеткой
-            self.bally = self.height - 2 - self.paddleHeight
-            self.balldirectionX = random.choice([1, -1])
-            self.balldirectionY = -1
-            self.lives -= 1
-            with canvas(self.matrix) as draw:
-                draw.text((1, -2), str(self.lives), fill="white")
-
-        # проверка столкновения с каждым из кирпичиков:
-        for brick in self.bricks[:]:
-            # с левой стороны
-            if self.ballx == brick["x1"]-1 \
-            and self.bally >= brick["y1"]-1 \
-            and self.bally <= brick["y2"]+1 \
-            and self.balldirectionX == 1:
+            # проверка столкновения со стенами игрового поля:
+            # правая
+            if self.ballx >= 127:
                 self.balldirectionX = -1
-                collision += "left "
-            # с правой стороны
-            elif self.ballx == brick["x2"]+1 \
-            and self.bally >= brick["y1"]-1 \
-            and self.bally <= brick["y2"]+1 \
-            and self.balldirectionX == -1:
+                self.buzz = True
+            # левая
+            if self.ballx <= 0:
                 self.balldirectionX = 1
-                collision += "right "
-            # с верхней стороны
-            if self.bally == brick["y1"]-1 \
-            and self.ballx >= brick["x1"]-1 \
-            and self.ballx <= brick["x2"]+1 \
-            and self.balldirectionY == 1:
-                self.balldirectionY = -1
-                collision += "top "
-            # с нижней стороны
-            elif self.bally == brick["y2"]+1 \
-            and self.ballx >= brick["x1"]-1 \
-            and self.ballx <= brick["x2"]+1 \
-            and self.balldirectionY == -1:
+                self.buzz = True
+            # верхняя
+            if self.bally <= 0:
                 self.balldirectionY = 1
-                collision += "bottom "
-            if collision != "":
-                self.bricks.remove(brick)
-                self.buzz = 1
-                collision = ""
+                self.buzz = True
 
-        # если где либо в коде игры флаг пищалки был установлен в True, пищим
-        if self.buzz: self.buzzer.start(1)
+            # проверка столкновения мячика с ракеткой:
+            # если мячик ниже верхней грани ракетки:
+            if self.bally >= self.height - self.paddleHeight - 1:
+                # знак обратной черты \ означает перенос на следующую строку
+                # таким образом мы можем писать несколько условий в столбец
+                # а не в строку, тем самым делая код более читаемым
+
+                # если мячик в пределах координат ракетки по оси X
+                # (правее левого конца ракетки и левее правого конца ракетки):
+                if self.ballx >= self.paddlePos \
+                and self.ballx <= self.paddlePos + self.paddleWidth:
+                    self.balldirectionY = -1
+                    self.buzz = True
+
+            # проверка выхода мячика за игровое поле снизу,
+            # если не успели поймать его ракеткой:
+            if self.bally >= 63:
+                # отключить движение мячика по полю
+                self.ballmoving = False
+                # расположить мячик прямо над ракеткой
+                self.bally = self.height - 2 - self.paddleHeight
+                # случайно устанавливаем следующее
+                # направление движения мячика по оси X
+                self.balldirectionX = random.choice([1, -1])
+                # устанавливаем направление движения мячика по оси Y вверх
+                self.balldirectionY = -1
+                # отнимаем одну жизнь
+                self.lives -= 1
+                # пишем на матрице светодиодов новое кол-во жизней
+                with canvas(self.matrix) as draw:
+                    draw.text((1, -2), str(self.lives), fill="white")
+
+            # проверка столкновения с каждым из кирпичиков:
+            for brick in self.bricks[:]:
+                # знак обратной черты \ означает перенос на следующую строку
+                # таким образом мы можем писать несколько условий в столбец
+                # а не в строку, тем самым делая код более читаемым
+
+                # очищаем флаг коллизии, чтобы столкновение с кирпичиком
+                # на прошлой итерации цикла не мешало на текущей итерации
+                collision = False
+                # с левой стороны
+                if self.ballx == brick["x1"] - 1 \
+                and self.bally >= brick["y1"] - 1 \
+                and self.bally <= brick["y2"] + 1 \
+                and self.balldirectionX == 1:
+                    self.balldirectionX = -1
+                    collision = True
+                # с правой стороны
+                elif self.ballx == brick["x2"] + 1 \
+                and self.bally >= brick["y1"] - 1 \
+                and self.bally <= brick["y2"] + 1 \
+                and self.balldirectionX == -1:
+                    self.balldirectionX = 1
+                    collision = True
+                # с верхней стороны
+                if self.bally == brick["y1"] - 1 \
+                and self.ballx >= brick["x1"] - 1 \
+                and self.ballx <= brick["x2"] + 1 \
+                and self.balldirectionY == 1:
+                    self.balldirectionY = -1
+                    collision = True
+                # с нижней стороны
+                elif self.bally == brick["y2"] + 1 \
+                and self.ballx >= brick["x1"] - 1 \
+                and self.ballx <= brick["x2"] + 1 \
+                and self.balldirectionY == -1:
+                    self.balldirectionY = 1
+                    collision = True
+
+                if collision:
+                    self.bricks.remove(brick)
+                    self.buzz = True
+            
+            # если кирпичиков больше не осталось, то игрок выйграл
+            # устанавливаем соответствующий флаг в True
+            if len(self.bricks) == 0: self.win = True
+
+            # если где либо в коде игры флаг пищалки
+            # был установлен в True, пищим
+            if self.buzz: self.buzzer.start(1)
+
+
+    def endGame(self, screen):
+        with canvas(self.oled) as draw:
+            for position, text in screen:
+                draw.text(position, text, fill="white", font=self.font)
+        # устанавливаем флаг, который остановит бесконечные циклы в методах
+        # play и redraw, чтобы игра закрылась корректно
+        self.kill = True
+        # показываем игроку надпись 5 секунд
+        time.sleep(5)
+        # выходим из игры
+        self.exit()
+
 
     # метод, рисующий графику игры на OLED экранчике в бесконечном цикле
     def redraw(self):
+        # бесконечный цикл
         while True:
+            # если установлен флаг закрытия игры, выходим из цикла
             if self.kill:
                 break
-            with canvas(self.oled) as draw:
-                if self.lives == 0:
-                    print("GAME OVER\n")
-                    draw.text((35, 28), "GAME OVER", fill="white")
-                    time.sleep(5)
-                draw.rectangle((self.paddlePos, self.height-self.paddleHeight, self.paddlePos+self.paddleWidth, self.height), outline=255, fill=self.solidPaddle)
-                draw.rectangle((self.ballx, self.bally, self.ballx, self.bally), outline=255, fill=1)
+            # если у игрока больше не осталось жизней (игрок проиграл):
+            if self.lives == 0:
+                # вызываем функцию, которая покажет на экране надпись
+                # и закроет игру
+                self.endGame([[(0, 28), "Вы проиграли!"]])
+            # если установлен флаг выйгрыша:
+            elif self.win:
+                # вызываем функцию, которая покажет на экране надпись
+                # и закроет игру
+                self.endGame([[(0, 18), "Поздравляем!"],
+                              [(0, 38), "Вы выйграли!"]])
+            else:
+                with canvas(self.oled) as draw:
+                    draw.rectangle((self.paddlePos,
+                                    self.height - self.paddleHeight,
+                                    self.paddlePos + self.paddleWidth,
+                                    self.height),
+                                    outline=255,
+                                    fill=self.solidPaddle)
+                    draw.rectangle((self.ballx,
+                                    self.bally,
+                                    self.ballx,
+                                    self.bally), 
+                                    outline=255,
+                                    fill=1)
 
-                for brick in self.bricks:
-                    draw.rectangle((brick["x1"], brick["y1"], brick["x2"], brick["y2"]), outline=255, fill=1)
+                    for brick in self.bricks:
+                        draw.rectangle((brick["x1"],
+                                        brick["y1"],
+                                        brick["x2"],
+                                        brick["y2"]),
+                                        outline=255,
+                                        fill=1)
 
     # основной метод, который запускает поток с методом, отрисовывающим графику
     # игры, таймер логики игры; обрабатывает поворот энкодера игроком,
     # запускает движение мячика по нажатию кнопки,
     # обновляет позицию мячика по оси X, чтобы он всегда
     # был посередине ракетки, если мяч не двигается
-    def start(self):
+    def play(self):
         # запускаем поток с методом, отрисовывающим графику игры на экранчике
-        thread = threading.Thread(target = self.redraw)
-        thread.start()
+        redraw_thread = threading.Thread(target = self.redraw)
+        redraw_thread.start()
 
-        # вызываем основной метод, обрабатывающий логику игры.
-        # после первого вызова метода, в нем сразу же создастся таймер,
-        # который будет автоматически вызывать этот же метод каждые 50 мс.
-        self.balllogic()
+        # запускаем поток с методом, обрабатывающим логику игры
+        logic_thread = threading.Thread(target = self.ballLogic)
+        logic_thread.start()
 
         # ставим режим строки на вывод для правильной работы кнопки матрицы
         GPIO.output(self.row1, GPIO.LOW)
@@ -255,6 +339,8 @@ class ArkanoidGame:
 
         # бесконечный цикл:
         while True:
+            # если установлен флаг закрытия игры, выходим из цикла
+            if self.kill: break
             # обновляем текущее состояние контактов энкодера
             self.clkState = GPIO.input(self.clkPin)
             self.dtState = GPIO.input(self.dtPin)
@@ -262,7 +348,8 @@ class ArkanoidGame:
 
             # если кнопка нажата и мячик не двигается:
             # запускаем движение мячика
-            if self.col1state == 0 and self.ballmoving == False: self.ballmoving = True
+            if self.col1state == 0 and self.ballmoving == False:
+                self.ballmoving = True
 
             # обрабатываем поворот энкодера: если последнее состояние
             # энкодера отличается от текущего, двигаем ракеткой
@@ -284,10 +371,18 @@ class ArkanoidGame:
 
             # переменная, запоминающая последнее состояние энкодера
             self.clkLastState = self.clkState
+        
+        # так как в потоке для отрисовки графики находится функция
+        # time.sleep, которая позволяет пару секунд показывать
+        # игроку надпись "Вы проиграли" или "Вы выйграли"
+        # нам нужно дождаться завершения этого потока из основного потока,
+        # иначе меню игры начнет конфликтовать с этим потоком
+        redraw_thread.join()
 
     # функция выхода из игры
     def exit(self):
-        self.nextLogicCall.cancel()
+        # устанавливаем флаг, который остановит бесконечные циклы в методах
+        # play, redraw и ballLogic, чтобы игра закрылась корректно
         self.kill = True
         # очищаем все настройки GPIO (типы контактов (вход/выход),
         # нумерации контактов (BCM/BOARD), и т. д.)
@@ -332,7 +427,11 @@ if __name__ == '__main__':
     #   GND 39 40 GPIO21
 
     # создать объект игры
-    game = ArkanoidGame(buzzerpin, clk, dt, rows, columns)
+    game = ArkanoidGame(buzzerpin,
+                        clk,
+                        dt,
+                        rows,
+                        columns)
     try:
         # запускаем игру
         game.play()
