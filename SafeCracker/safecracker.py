@@ -32,6 +32,7 @@ class SafeCrackerGame:
     # при неверной введенной комбинации сейфа
     def wrongAnswerBeeper(self):
         # цикл, код в котором выполнится 3 раза
+        # (эквивалент for(int i; i < 3; i++))
         for i in range(0, 3):
             # ставим частоту пищалки на 100 гц
             self.buzzer.ChangeFrequency(100)
@@ -49,7 +50,7 @@ class SafeCrackerGame:
         i2c_oled = i2c(port=1, address=0x3C)
         self.oled = ssd1306(i2c_oled)
 
-        # настраиваем красивый шрифт, чтобы выводить текст с его помощью
+        # загружаем красивый шрифт, чтобы выводить текст с его помощью
         self.font = ImageFont.truetype("./FRM325x8.ttf", 10)
 
         # так как в этой игре нам нужно только 9 кнопок (матрица 3 на 3)
@@ -92,6 +93,7 @@ class SafeCrackerGame:
         self.code = []
 
         # добавляем в нее 5 случайных цифр
+        # ( код в цикле выполнится 5 раз - эквивалент for(int i; i < 5; i++) )
         for i in range(0, 5):
             self.code.append(random.randint(1, 9))
 
